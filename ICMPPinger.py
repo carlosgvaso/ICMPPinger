@@ -42,11 +42,51 @@ def receiveOnePing(mySocket, ID, timeout, destAddr):
         timeReceived = time.time()
         recPacket, addr = mySocket.recvfrom(1024)
 
-        #Fill in start
+        # Fill in start
+        # Fetch the ICMP header from the IP packet
+        ICMP_ECHO_REPLY_TYPE = 0
+        ICMP_ECHO_REPLY_CODE = 0
 
-        #Fetch the ICMP header from the IP packet
+        icmpHeader = recPacket[20:28]
+        packetData = recPacket[28:]
 
-        #Fill in end
+        icmpType, icmpCode, icmpChecksum, packetID, packetSequence = struct.unpack('bbHHh', icmpHeader)
+        timeSent = struct.unpack('d', packetData)[0]
+
+        expectedChecksum = 0
+        # Make a dummy header with a 0 checksum
+        # struct -- Interpret strings as packed binary data
+        header_checksum = struct.pack("bbHHh", icmpType, icmpCode, expectedChecksum, packetID, packetSequence)
+        data_checksum = struct.pack("d", timeSent)
+        # Calculate the checksum on the data and the dummy header.
+        expectedChecksum = checksum(str(header_checksum + data_checksum))
+
+        # Get the right checksum, and put in the header
+        if sys.platform == 'darwin':
+            # Convert 16-bit integers from host to network  byte order
+            expectedChecksum = htons(expectedChecksum) & 0xffff
+        else:
+            expectedChecksum = htons(expectedChecksum)
+
+        # Print all the values for debugging
+        #print('addr:{0}, expected: {1}'.format(addr[0], destAddr))
+        #print('recPacket: {0}'.format(binascii.hexlify(recPacket)))
+        #print('icmpHeader: {0}'.format(binascii.hexlify(icmpHeader)))
+        #print('packetData: {0}'.format(binascii.hexlify(packetData)))
+        #print('icmpType: {0}, expected: {1}'.format(icmpType, ICMP_ECHO_REPLY_TYPE))
+        #print('icmpCode: {0}, expected: {1}'.format(icmpCode, ICMP_ECHO_REPLY_CODE))
+        #print('icmpChecksum: {0}, expected: {1}'.format(icmpChecksum, expectedChecksum))
+        #print('packetID: {0}, expected: {1}'.format(packetID, ID))
+
+        # Check the received packet comes from the expected host, it has the correct ICMP type and code, check the
+        # packet is not corrupted, and check this is the packet we are expecting by matching the ID and sequence numbers
+        if addr[0] == destAddr and icmpType == ICMP_ECHO_REPLY_TYPE and icmpCode == ICMP_ECHO_REPLY_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedChecksum:
+            #print('Pong received!')
+            return timeReceived - timeSent
+        #print('Received packet is not the pong expected')
+
+        # Fill in end
         timeLeft = timeLeft - howLongInSelect
         if timeLeft <= 0:
             return "Request timed out."
@@ -73,8 +113,8 @@ def sendOnePing(mySocket, destAddr, ID):
     packet = header + data
 
     mySocket.sendto(packet, (destAddr, 1)) # AF_INET address must be tuple, not str
-# Both LISTS and TUPLES consist of a number of objects
-# which can be referenced by their position number within the object.
+    # Both LISTS and TUPLES consist of a number of objects
+    # which can be referenced by their position number within the object.
 
 def doOnePing(destAddr, timeout):
     icmp = getprotobyname("icmp")
@@ -103,4 +143,4 @@ def ping(host, timeout=1):
         time.sleep(1)# one second
     return delay
 
-ping("google.com")
+#ping("google.com")
