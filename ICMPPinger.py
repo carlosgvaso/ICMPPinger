@@ -7,6 +7,16 @@ import select
 import binascii
 
 ICMP_ECHO_REQUEST = 8
+ICMP_ECHO_REPLY_TYPE = 0
+ICMP_ECHO_REPLY_CODE = 0
+ICMP_ERROR_TYPE = 3
+ICMP_DEST_NET_UNREACHABLE_CODE = 0
+ICMP_DEST_HOST_UNREACHABLE_CODE = 1
+ICMP_DEST_PROTO_UNREACHABLE_CODE = 2
+ICMP_DEST_PORT_UNREACHABLE_CODE = 3
+ICMP_DEST_NET_UNKNOWN_CODE = 6
+ICMP_DEST_HOST_UNKNOWN_CODE = 7
+
 
 def calcStats(rttList):
     rttMax = 0.0
@@ -75,47 +85,65 @@ def receiveOnePing(mySocket, ID, timeout, destAddr):
 
         # Fill in start
         # Fetch the ICMP header from the IP packet
-        ICMP_ECHO_REPLY_TYPE = 0
-        ICMP_ECHO_REPLY_CODE = 0
-
+        ipHeader = recPacket[:20]
         icmpHeader = recPacket[20:28]
         packetData = recPacket[28:]
 
+        ipVersion, ipTypeOfSvc, ipLength, ipID, ipFlags, ipTTL, ipProtocol, ipChecksum, ipSrcIP, ipDestIP = \
+            struct.unpack("!BBHHHBBHII", ipHeader)
         icmpType, icmpCode, icmpChecksum, packetID, packetSequence = struct.unpack('bbHHh', icmpHeader)
         timeSent = struct.unpack('d', packetData)[0]
 
-        expectedChecksum = 0
+        expectedIcmpChecksum = 0
         # Make a dummy header with a 0 checksum
         # struct -- Interpret strings as packed binary data
-        header_checksum = struct.pack("bbHHh", icmpType, icmpCode, expectedChecksum, packetID, packetSequence)
+        header_checksum = struct.pack("bbHHh", icmpType, icmpCode, expectedIcmpChecksum, packetID, packetSequence)
         data_checksum = struct.pack("d", timeSent)
         # Calculate the checksum on the data and the dummy header.
-        expectedChecksum = checksum(str(header_checksum + data_checksum))
+        expectedIcmpChecksum = checksum(str(header_checksum + data_checksum))
 
         # Get the right checksum, and put in the header
         if sys.platform == 'darwin':
             # Convert 16-bit integers from host to network  byte order
-            expectedChecksum = htons(expectedChecksum) & 0xffff
+            expectedIcmpChecksum = htons(expectedIcmpChecksum) & 0xffff
         else:
-            expectedChecksum = htons(expectedChecksum)
+            expectedIcmpChecksum = htons(expectedIcmpChecksum)
 
         # Print all the values for debugging
+        #print('ipSrcIP:{0}, expected: {1}'.format(ipSrcIP, destAddr))
+        #print('ipTTL:{0}, expected: {1}'.format(ipTTL, '?'))
         #print('addr:{0}, expected: {1}'.format(addr[0], destAddr))
         #print('recPacket: {0}'.format(binascii.hexlify(recPacket)))
         #print('icmpHeader: {0}'.format(binascii.hexlify(icmpHeader)))
         #print('packetData: {0}'.format(binascii.hexlify(packetData)))
         #print('icmpType: {0}, expected: {1}'.format(icmpType, ICMP_ECHO_REPLY_TYPE))
         #print('icmpCode: {0}, expected: {1}'.format(icmpCode, ICMP_ECHO_REPLY_CODE))
-        #print('icmpChecksum: {0}, expected: {1}'.format(icmpChecksum, expectedChecksum))
+        #print('icmpChecksum: {0}, expected: {1}'.format(icmpChecksum, expectedIcmpChecksum))
         #print('packetID: {0}, expected: {1}'.format(packetID, ID))
 
         # Check the received packet comes from the expected host, it has the correct ICMP type and code, check the
         # packet is not corrupted, and check this is the packet we are expecting by matching the ID and sequence numbers
         if addr[0] == destAddr and icmpType == ICMP_ECHO_REPLY_TYPE and icmpCode == ICMP_ECHO_REPLY_CODE and \
-                packetID == ID and packetSequence == 1 and icmpChecksum == expectedChecksum:
-            #print('Pong received!')
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
             return timeReceived - timeSent
-        #print('Received packet is not the pong expected')
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_NET_UNREACHABLE_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination network unreachable.'
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_HOST_UNREACHABLE_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination host unreachable.'
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_PROTO_UNREACHABLE_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination protocol unreachable.'
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_PORT_UNREACHABLE_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination port unreachable.'
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_NET_UNKNOWN_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination network unknown.'
+        elif icmpType == ICMP_ERROR_TYPE and icmpCode == ICMP_DEST_HOST_UNKNOWN_CODE and \
+                packetID == ID and packetSequence == 1 and icmpChecksum == expectedIcmpChecksum:
+            return 'Destination host unknown.'
 
         # Fill in end
         timeLeft = timeLeft - howLongInSelect
