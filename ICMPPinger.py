@@ -8,6 +8,37 @@ import binascii
 
 ICMP_ECHO_REQUEST = 8
 
+def calcStats(rttList):
+    rttMax = 0.0
+    rttMin = 1.0
+    rttSum = 0.0
+    rttCount = 0
+    lossCount = 0
+
+    for rtt in rttList:
+        if isinstance(rtt, float):
+            if rtt > rttMax:
+                rttMax = rtt
+            if rtt < rttMin:
+                rttMin = rtt
+            rttSum += rtt
+            rttCount += 1
+        else:
+            lossCount += 1
+
+    lossRate = 100 * lossCount / (rttCount + lossCount)
+    if rttCount > 0:
+        rttAvg = rttSum / rttCount
+    else:
+        rttAvg = 'N/A'
+    if rttMax == 0.0:
+        rttMax = 'N/A'
+    if rttMin == 1.0:
+        rttMin = 'N/A'
+
+    print('\nAvg RTT: {0}, Max RTT: {1}, Min RTT: {2}, Packet Loss Rate: {3}%'
+          .format(rttAvg, rttMax, rttMin, lossRate))
+
 def checksum(string):
     csum = 0
     countTo = (len(string) // 2) * 2
@@ -137,10 +168,15 @@ def ping(host, timeout=1):
     print("Pinging " + dest + " using Python:")
     print("")
     # Send ping requests to a server separated by approximately one second
-    while 1 :
-        delay = doOnePing(dest, timeout)
-        print(delay)
-        time.sleep(1)# one second
+    delayList = list()
+    try:
+        while 1 :
+            delay = doOnePing(dest, timeout)
+            print(delay)
+            delayList.append(delay)
+            time.sleep(1)# one second
+    except KeyboardInterrupt:
+        calcStats(delayList)
     return delay
 
 #ping("google.com")
