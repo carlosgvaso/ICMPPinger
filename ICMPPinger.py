@@ -206,7 +206,13 @@ def doOnePing(destAddr, timeout):
 def ping(host, timeout=1):
     # timeout=1 means: If one second goes by without a reply from the server,
     # the client assumes that either the client's ping or the server's pong is lost
-    dest = gethostbyname(host)
+    try:
+        dest = gethostbyname(host)
+    except (error, herror, gaierror) as e:
+        # Handle socket errors such as network unreachable
+        delay = e[1]
+        print(delay)
+        return delay
     print("Pinging " + dest + " using Python:")
     print("")
     # Send ping requests to a server separated by approximately one second
@@ -217,7 +223,7 @@ def ping(host, timeout=1):
             print(delay[0])
             delayList.append(delay[1])
             time.sleep(1)  # one second
-    except error as e:
+    except (error, herror, gaierror) as e:
         # Handle socket errors such as network unreachable
         delay = e[1]
         print(delay)
